@@ -1,0 +1,25 @@
+{%- macro write_config(config) -%}
+{%- for k, v in config.items() -%}
+{%- if v is mapping -%}
+{{ k }} {
+{{ write_config(v)|indent(4, true) }}
+}
+{% elif v is iterable and v is not string -%}
+{%- for i in v -%}
+{%- if i is mapping -%}
+{{- write_config({k: i}) -}}
+{%- else %}
+{{ k }} {{ i }};
+{% endif %}
+{%- endfor %}
+{%- elif v is sameas true -%}
+{{ k }} on;
+{%- elif v is sameas false -%}
+{{ k }} off;
+{%- else -%}
+{{ k }} {{ v }};
+{% endif -%}
+{%- endfor -%}
+{%- endmacro -%}
+
+{{- write_config(nginx_config) }}
