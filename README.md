@@ -19,9 +19,13 @@ Podman proxy will do the following:
 
 When you start your podman containers, specify a hostname and expose a port.
 Podman proxy will config a virtual host with the specified hostname and reverse
-proxy to the exposed port. You can expose the internal port without specifying
+proxy to the exposed port. You can specify the internal port without specifying
 the external port to let podman chose the port `-p 80`. Podman proxy will grab
 the random port from the container.
+
+If you use subdomains of localhost (ie: `test.localhost`), you don't need to do
+anything else, otherwise something like `dnsmasq` will be needed which is not
+covered by this tool.
 
 ## Issues
 
