@@ -7,6 +7,9 @@ import json
 import pprint
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+
+USAGE = "Usage: python podproxy.py <ip-address> [<port>]"
+
 template_env = Environment(
         loader=FileSystemLoader('templates'))
 template = template_env.get_template('nginx.jinja2')
@@ -17,6 +20,7 @@ HOST_IP = "0.0.0.0" # you should pass this as an argument for now
 CONFIG_DIR = os.path.join(os.getcwd(), 'nginx')
 CONFIG_FILE = os.path.join(CONFIG_DIR, 'default.conf')
 PROXY_NAME = 'podproxy-nginx'
+PROXY_PORT = '80'
 
 ContainerConfig = namedtuple(
         'ContainerConfig',
@@ -195,17 +199,19 @@ def start_proxy():
 def create_proxy():
     config_map = "%s:%s" % (CONFIG_DIR, '/etc/nginx/conf.d')
     process_args = ['podman', 'run', '-d', '--name', 'podproxy-nginx',
-                              '-p', '80:80', '-v', config_map, 'nginx']
+                    '-p', '%s:80' % (PROXY_PORT,), '-v', config_map, 'nginx']
     process = subprocess.run(process_args, capture_output=True, text=True)
 
-    if process.returncode != 0:
-        if 'cannot expose privileged port 80' not in process.stderr:
-            print(process.stderr)
-            raise Exception("Unable to start proxy. %s" % (process.returncode,))
+    if process.returncode == 0:
+        return
 
-        subprocess.run(['podman', 'rm', PROXY_NAME])
+    if 'cannot expose privileged port %s' % (PROXY_PORT,) not in process.stderr:
+        print(process.stderr)
+        raise Exception("Unable to start proxy. %s" % (process.returncode,))
 
-    print("Could not start proxy on port 80")
+    subprocess.run(['podman', 'rm', PROXY_NAME])
+
+    print("Could not start proxy on port %s" % (PROXY_PORT,))
 
     process_args = ['podman', 'run', '-d', '--name', 'podproxy-nginx',
                               '-p', '80', '-v', config_map, 'nginx']
@@ -217,10 +223,15 @@ def create_proxy():
 
 def main(args):
     if len(args) == 0:
-        print("Pass the host ip as the first argument")
+        print(USAGE)
+        return
 
     global HOST_IP
+    global PROXY_PORT
     HOST_IP = args[0]
+    
+    if len(args) >= 2:
+        PROXY_PORT = args[1]
 
     print("Starting proxy")
     start_proxy()
