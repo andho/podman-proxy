@@ -16,6 +16,7 @@ Podman proxy will do the following:
   configs for them.
 - After startup, it will listen to podman events and update the virtual host
   configs accordingly.
+- It will reload nginx when ever configs change
 
 When you start your podman containers, specify a hostname and expose a port.
 Podman proxy will config a virtual host with the specified hostname and reverse
@@ -40,3 +41,4 @@ covered by this tool.
 - [ ] Separate nginx related stuff to a separate module
 - [ ] Expose a web dashboard on the default host and show current status
 - [ ] Find a better way to run on port 80 without sysctl configuration
+- [ ] Integrate with [Netavark](https://github.com/containers/netavark)
