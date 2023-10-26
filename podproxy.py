@@ -21,10 +21,11 @@ CONFIG_DIR = os.path.join(os.getcwd(), 'nginx')
 CONFIG_FILE = os.path.join(CONFIG_DIR, 'default.conf')
 PROXY_NAME = 'podproxy-nginx'
 PROXY_PORT = '80'
+NETWORK = 'podproxy'
 
 ContainerConfig = namedtuple(
         'ContainerConfig',
-        ['port', 'hostname', 'name', 'status'])
+        ['port', 'upstream', 'hostname', 'name', 'status'])
 EventInfo = namedtuple('EventInfo', ['datetime', 'type', 'event', 'id',
                                      'container_image', 'container_name',
                                      'container_app'])
@@ -87,16 +88,34 @@ def update_configs(container_info):
     container_name = container_info['Name']
     if container_name == 'podproxy-nginx':
         return
-    
-    port_dict = container_info['NetworkSettings']['Ports']
-    ports = [port['HostPort'] for ports in port_dict.values() for port in ports]
 
     hostname = container_info['Config']['Hostname']
-
     status = container_info['State']['Status']
+    
+    port_dict = container_info['NetworkSettings']['Ports']
+    ports = [port['HostPort'] for ports in port_dict.values() if ports is not None for port in ports]
+    if len(ports) > 0:
+        upstream = HOST_IP
+        print("{}: Using exposed port {}".format(container_name, ports[0]))
+    else:
+        # there are no exposed ports, so lets try defined ports
+        ports = [port.split('/')[0] for port in port_dict.keys()]
+
+        if len(ports) == 0:
+            print("No exposed/defined ports on {}".format(container_name))
+            return
+
+        if not is_proxy_network_connected(container_info):
+            print("Not connected to {} network or have exposed ports".format(NETWORK))
+            return
+
+        print("{}: Using internal port {}".format(container_name, ports[0]))
+
+        upstream = get_upstream(container_info)
 
     config = ContainerConfig(
             port=ports[0],
+            upstream=upstream,
             hostname=hostname,
             name=container_name,
             status=status)
@@ -109,6 +128,15 @@ def update_configs(container_info):
         hostname_containers[config.hostname] = set()
 
     hostname_containers[config.hostname].add(config.name)
+
+def get_upstream(container_info):
+    return container_info['NetworkSettings']['Networks'][NETWORK]['Aliases'][0]
+
+def is_proxy_network_connected(container_info):
+    if NETWORK in container_info['NetworkSettings']['Networks']:
+        return True
+
+    return False
 
 def remove_config(container_name):
     print("Removing config for container: %s" % (container_name,))
@@ -140,7 +168,7 @@ def update_config_file():
 
     for config in configs.values():
         data["upstream %s" % (config.hostname,)] = [
-                {'server': "%s:%s" % (HOST_IP, config.port)}]
+                {'server': "%s:%s" % (config.upstream, config.port)}]
         data['server'].append({
             'server_name': config.hostname,
             'location /': {
@@ -197,6 +225,8 @@ def start_proxy():
 
 
 def create_proxy():
+    create_proxy_network()
+
     config_map = "%s:%s" % (CONFIG_DIR, '/etc/nginx/conf.d')
     process_args = ['podman', 'run', '-d', '--name', 'podproxy-nginx',
                     '-p', '%s:80' % (PROXY_PORT,), '-v', config_map, 'nginx']
@@ -214,12 +244,30 @@ def create_proxy():
     print("Could not start proxy on port %s" % (PROXY_PORT,))
 
     process_args = ['podman', 'run', '-d', '--name', 'podproxy-nginx',
-                              '-p', '80', '-v', config_map, 'nginx']
+                              '-p', '80', '-v', config_map, '--net', NETWORK,
+                              'nginx']
     process = subprocess.run(process_args, capture_output=True, text=True)
 
     if process.returncode != 0:
         print(process.stderr)
         raise Exception("Unable to start proxy. %s" % (process.returncode,))
+
+def create_proxy_network():
+    # checking if network exists
+    process_args = ['podman', 'network', 'exists', NETWORK]
+    process = subprocess.run(process_args, text=True)
+
+    if process.returncode == 0:
+        return
+
+    process_args = ['podman', 'network', 'create', NETWORK]
+    process = subprocess.run(process_args, text=True)
+
+    if process.returncode != 0:
+        print(process.stderr)
+        raise Exception("Unable to create podman network for proxy")
+
+    print("{} network created for proxy".format(NETWORK))
 
 def main(args):
     if len(args) == 0:
