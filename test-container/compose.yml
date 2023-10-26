@@ -1,0 +1,15 @@
+version: "3"
+
+services:
+  nginx:
+    image: nginx
+    hostname: n1.localhost
+    volumes:
+      ./index.html:/usr/share/nginx/html/index.html:ro
+    networks:
+      - podproxy
+
+networks:
+  podproxy:
+    external: true
+    name: podproxy
