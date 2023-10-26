@@ -130,7 +130,20 @@ def update_configs(container_info):
     hostname_containers[config.hostname].add(config.name)
 
 def get_upstream(container_info):
-    return container_info['NetworkSettings']['Networks'][NETWORK]['Aliases'][0]
+    aliases = container_info['NetworkSettings']['Networks'][NETWORK]['Aliases']
+
+    hostname = container_info['Config']['Hostname']
+    id = container_info['Id']
+    
+    for alias in aliases:
+        if alias == hostname:
+            return hostname
+
+    for alias in aliases:
+        if alias in id:
+            return alias
+
+    return aliases[0]
 
 def is_proxy_network_connected(container_info):
     if NETWORK in container_info['NetworkSettings']['Networks']:
@@ -228,7 +241,7 @@ def create_proxy():
     create_proxy_network()
 
     config_map = "%s:%s" % (CONFIG_DIR, '/etc/nginx/conf.d')
-    process_args = ['podman', 'run', '-d', '--name', 'podproxy-nginx',
+    process_args = ['podman', 'run', '-d', '--rm', '--name', 'podproxy-nginx',
                     '-p', '%s:80' % (PROXY_PORT,), '-v', config_map, 'nginx']
     process = subprocess.run(process_args, capture_output=True, text=True)
 
@@ -238,6 +251,8 @@ def create_proxy():
     if 'cannot expose privileged port %s' % (PROXY_PORT,) not in process.stderr:
         print(process.stderr)
         raise Exception("Unable to start proxy. %s" % (process.returncode,))
+
+    print("Could not start with port {}. Going to use a random port.".format(PROXY_PORT))
 
     subprocess.run(['podman', 'rm', PROXY_NAME])
 
